@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Submit a minimal characterization batch to IBM hardware.
+"""Submit a full characterization batch to IBM hardware.
 
-This WILL spend credits. Uses conservative parameters:
+This WILL spend credits. Parameters tuned from first run results:
   - 3 qubits (0, 1, 2)
-  - 5 delay points per qubit for T1 and T2
-  - 256 shots per circuit
-  - Total: 36 circuits
+  - 20 delay points per qubit for T1 and T2 (was 5)
+  - T1 max delay extended to 400 µs (qubit 1 T1 ≈ 186 µs)
+  - T2 max delay extended to 400 µs (qubit 1 T2 ≈ 257 µs)
+  - 1024 shots per circuit (was 256)
+  - Total: 126 circuits
 
 Usage:
     python scripts/submit_minimal_test.py
@@ -41,11 +43,11 @@ logging.basicConfig(level=logging.INFO,
 
 # ── Minimal test parameters ──────────────────────────────────────
 QUBITS = [0, 1, 2]
-T1_NUM_DELAYS = 5
-T1_MAX_DELAY_US = 300.0
-T2_NUM_DELAYS = 5
-T2_MAX_DELAY_US = 200.0
-SHOTS = 256
+T1_NUM_DELAYS = 20
+T1_MAX_DELAY_US = 400.0   # covers qubit 1 T1 ≈ 186 µs with margin
+T2_NUM_DELAYS = 20
+T2_MAX_DELAY_US = 400.0   # covers qubit 1 T2 ≈ 257 µs with margin
+SHOTS = 1024
 
 
 def main() -> None:
@@ -124,7 +126,7 @@ def main() -> None:
             "num_t2_circuits": n_t2,
             "num_readout_circuits": n_ro,
             "shots": SHOTS,
-            "test": "minimal_first_run",
+            "test": "full_characterization_20delays",
         },
     )
     print(f"  Job recorded in database.")
