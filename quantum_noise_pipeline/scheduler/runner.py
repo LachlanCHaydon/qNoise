@@ -165,21 +165,23 @@ def retrieve_pending_jobs(client: IBMClient, db: DatabaseStore) -> int:
     for record in pending:
         try:
             job = client._service.job(record.job_id)
-            status = job.status()
+            raw_status = job.status()
+            # status() may return a string or an enum with .name
+            status_str = raw_status.name if hasattr(raw_status, "name") else str(raw_status)
 
-            if status.name == "DONE":
+            if status_str == "DONE":
                 db.update_job_status(record.job_id, "DONE")
                 _parse_and_store_job_results(job, record, db)
                 _log_status(f"Job {record.job_id} completed ({record.job_type})")
                 retrieved += 1
 
-            elif status.name in ("ERROR", "CANCELLED"):
+            elif status_str in ("ERROR", "CANCELLED"):
                 error_msg = getattr(job, "error_message", lambda: "Unknown")()
-                db.update_job_status(record.job_id, status.name, error_message=str(error_msg))
-                _log_status(f"Job {record.job_id} failed: {status.name}")
+                db.update_job_status(record.job_id, status_str, error_message=str(error_msg))
+                _log_status(f"Job {record.job_id} failed: {status_str}")
 
             else:
-                logger.info("Job %s still %s", record.job_id, status.name)
+                logger.info("Job %s still %s", record.job_id, status_str)
 
         except Exception as e:
             logger.error("Error checking job %s: %s", record.job_id, e)
