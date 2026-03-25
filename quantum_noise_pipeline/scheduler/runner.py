@@ -11,6 +11,7 @@ import logging
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from quantum_noise_pipeline.config import PipelineConfig, load_config
 from quantum_noise_pipeline.database.store import DatabaseStore
@@ -27,6 +28,122 @@ def _log_status(message: str) -> None:
     with open(STATUS_LOG, "a") as f:
         f.write(f"[{timestamp}] {message}\n")
     logger.info(message)
+
+
+def _extract_counts_from_sampler_result(job_result: Any) -> list[dict[str, int]]:
+    """Convert SamplerV2 PrimitiveResult into a list of counts dicts.
+
+    SamplerV2 returns one PubResult per circuit. Each PubResult has a
+    DataBin with a classical register (named 'c' by default). This
+    extracts plain {bitstring: count} dicts in circuit order.
+
+    Args:
+        job_result: The result object from job.result().
+
+    Returns:
+        List of count dicts, one per circuit, in submission order.
+    """
+    counts_list: list[dict[str, int]] = []
+    for pub_result in job_result:
+        data = pub_result.data
+        # Classical register is named 'c' for QuantumCircuit(n, n) circuits
+        register = getattr(data, "c", None)
+        if register is None:
+            # Fall back to first available register
+            register = next(iter(data.__dict__.values()))
+        counts_list.append(register.get_counts())
+    return counts_list
+
+
+def _parse_and_store_job_results(job: Any, record: Any, db: DatabaseStore) -> None:
+    """Parse a completed SamplerV2 job and store results in the database.
+
+    Args:
+        job: Completed RuntimeJobV2 instance.
+        record: The JobRecord from the database.
+        db: DatabaseStore for persisting results.
+    """
+    from quantum_noise_pipeline.characterization.t1 import analyze_t1_results, generate_delay_values as t1_delays
+    from quantum_noise_pipeline.characterization.t2 import analyze_t2_results, generate_delay_values as t2_delays
+    from quantum_noise_pipeline.characterization.readout_error import analyze_readout_results
+
+    meta = record.metadata_json or {}
+    qubits: list[int] = meta.get("qubits", [])
+    shots: int = meta.get("shots", 1024)
+    n_t1 = meta.get("num_t1_circuits", 0)
+    n_t2 = meta.get("num_t2_circuits", 0)
+    n_ro = meta.get("num_readout_circuits", 0)
+
+    if not qubits:
+        logger.warning("No qubit metadata on job %s, skipping result parse", record.job_id)
+        return
+
+    try:
+        raw_result = job.result()
+        all_counts = _extract_counts_from_sampler_result(raw_result)
+    except Exception as e:
+        logger.error("Failed to extract counts from job %s: %s", record.job_id, e)
+        return
+
+    # Slice counts back into per-experiment groups (same order as submission)
+    t1_counts = all_counts[:n_t1]
+    t2_counts = all_counts[n_t1:n_t1 + n_t2]
+    ro_counts = all_counts[n_t1 + n_t2:n_t1 + n_t2 + n_ro]
+
+    num_t1_delays = n_t1 // len(qubits) if qubits else 0
+    num_t2_delays = n_t2 // len(qubits) if qubits else 0
+
+    try:
+        t1_results = analyze_t1_results(
+            t1_counts, qubits, t1_delays(num_t1_delays, 300.0), shots
+        )
+        for r in t1_results:
+            db.save_t1_result(
+                backend_name=record.backend_name,
+                qubit=r.qubit,
+                t1_us=r.t1_us,
+                num_delays=num_t1_delays,
+                shots=shots,
+                t1_stderr=r.t1_stderr,
+                job_id=record.job_id,
+                raw_data={"delays_us": r.delays_us, "survival_probs": r.survival_probabilities},
+            )
+    except Exception as e:
+        logger.error("T1 analysis failed for job %s: %s", record.job_id, e)
+
+    try:
+        t2_results = analyze_t2_results(
+            t2_counts, qubits, t2_delays(num_t2_delays, 200.0), shots
+        )
+        for r in t2_results:
+            db.save_t2_result(
+                backend_name=record.backend_name,
+                qubit=r.qubit,
+                t2_us=r.t2_us,
+                num_delays=num_t2_delays,
+                shots=shots,
+                t2_stderr=r.t2_stderr,
+                job_id=record.job_id,
+                raw_data={"delays_us": r.delays_us, "survival_probs": r.survival_probabilities},
+            )
+    except Exception as e:
+        logger.error("T2 analysis failed for job %s: %s", record.job_id, e)
+
+    try:
+        ro_results = analyze_readout_results(ro_counts, qubits, shots)
+        for r in ro_results:
+            db.save_readout_error(
+                backend_name=record.backend_name,
+                qubit=r.qubit,
+                error_rate_0to1=r.error_rate_0to1,
+                error_rate_1to0=r.error_rate_1to0,
+                shots=shots,
+                job_id=record.job_id,
+            )
+    except Exception as e:
+        logger.error("Readout analysis failed for job %s: %s", record.job_id, e)
+
+    logger.info("Stored results for job %s", record.job_id)
 
 
 def retrieve_pending_jobs(client: IBMClient, db: DatabaseStore) -> int:
@@ -52,6 +169,7 @@ def retrieve_pending_jobs(client: IBMClient, db: DatabaseStore) -> int:
 
             if status.name == "DONE":
                 db.update_job_status(record.job_id, "DONE")
+                _parse_and_store_job_results(job, record, db)
                 _log_status(f"Job {record.job_id} completed ({record.job_type})")
                 retrieved += 1
 
@@ -106,10 +224,23 @@ def submit_characterization_batch(
     readout_circuits, _ = build_readout_circuits(qubits)
 
     backend = client.backend
-    all_circuits = t1_circuits + t2_circuits + readout_circuits
 
-    logger.info("Transpiling %d circuits for %s...", len(all_circuits), client.backend_name)
-    transpiled = transpile(all_circuits, backend=backend, optimization_level=1)
+    # Transpile each qubit's circuits separately with the correct physical qubit
+    # via initial_layout — without this, the transpiler maps all 1-qubit circuits
+    # to the same arbitrary qubit regardless of the metadata "qubit" field.
+    def _transpile_qubit(circuits: list, qubit: int) -> list:
+        return list(transpile(circuits, backend=backend,
+                              initial_layout=[qubit], optimization_level=1))
+
+    transpiled: list = []
+    for q in qubits:
+        transpiled += _transpile_qubit([c for c in t1_circuits if c.metadata["qubit"] == q], q)
+    for q in qubits:
+        transpiled += _transpile_qubit([c for c in t2_circuits if c.metadata["qubit"] == q], q)
+    for q in qubits:
+        transpiled += _transpile_qubit([c for c in readout_circuits if c.metadata["qubit"] == q], q)
+
+    logger.info("Transpiled %d circuits for %s", len(transpiled), client.backend_name)
 
     job = client.run_sampler(transpiled, shots=params.default_shots)
 

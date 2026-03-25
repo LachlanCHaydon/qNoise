@@ -39,7 +39,7 @@ class IBMClient:
         service = QiskitRuntimeService(
             channel=config.channel,
             token=config.api_token,
-            instance=config.instance,
+            instance=config.instance or None,
         )
         return cls(service=service, backend_name=config.default_backend)
 
