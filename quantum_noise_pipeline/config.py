@@ -19,7 +19,7 @@ class IBMConfig:
     api_token: str = field(default_factory=lambda: os.environ.get("IBM_QUANTUM_TOKEN", ""))
     channel: str = "ibm_quantum_platform"
     instance: str = field(
-        default_factory=lambda: os.environ.get("IBM_QUANTUM_INSTANCE", "ibm-q/open/main")
+        default_factory=lambda: os.environ.get("IBM_QUANTUM_INSTANCE", "")
     )
     default_backend: str = field(
         default_factory=lambda: os.environ.get("IBM_QUANTUM_BACKEND", "ibm_fez")
