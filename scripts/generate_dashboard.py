@@ -497,9 +497,56 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     line-height: 1.5;
     margin: 0.5rem 0;
   }}
+  .site-nav {{
+    position: fixed;
+    top: 0;
+    right: 0;
+    z-index: 100;
+    padding: 20px 32px;
+    display: flex;
+    gap: 24px;
+    align-items: center;
+  }}
+
+  .site-nav a {{
+    text-decoration: none;
+    color: {text};
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    opacity: 0.45;
+    transition: opacity 0.2s ease;
+  }}
+
+  .site-nav a:hover {{
+    opacity: 1;
+  }}
+
+  .site-nav .nav-active {{
+    opacity: 1;
+  }}
+
+  .site-nav .nav-sep {{
+    color: {text_secondary};
+    opacity: 0.25;
+    font-size: 11px;
+    user-select: none;
+  }}
 </style>
 </head>
 <body>
+
+<nav class="site-nav">
+  <a href="https://lachlan.site/">Home</a>
+  <span class="nav-sep">/</span>
+  <a href="https://lachlan.site/#projects">Projects</a>
+  <span class="nav-sep">/</span>
+  <a href="https://lachlan.site/projects/loyola-lightning-machine/">TGFs &amp; Lightning</a>
+  <span class="nav-sep">/</span>
+  <a class="nav-active" href="#">qNoise</a>
+</nav>
+
 <div class="container">
 
 <header>
