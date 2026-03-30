@@ -89,7 +89,7 @@ def make_coherence_chart(t1_df: pd.DataFrame, t2_df: pd.DataFrame) -> str:
     fig = make_subplots(
         rows=2, cols=1,
         subplot_titles=("T1 — Energy Relaxation Time", "T2 — Coherence Time (Hahn Echo)"),
-        vertical_spacing=0.14,
+        vertical_spacing=0.22,
     )
 
     for qubit in sorted(t1_df["qubit"].unique()):
@@ -117,7 +117,9 @@ def make_coherence_chart(t1_df: pd.DataFrame, t2_df: pd.DataFrame) -> str:
     fig.update_yaxes(title_text="T1 (µs)", row=1, col=1)
     fig.update_yaxes(title_text="T2 (µs)", row=2, col=1)
     style(fig)
-    fig.update_layout(height=520)
+    fig.update_xaxes(gridcolor=COLORS["grid"], zeroline=False)
+    fig.update_yaxes(gridcolor=COLORS["grid"], zeroline=False)
+    fig.update_layout(height=580)
     return fig.to_html(full_html=False, include_plotlyjs=False)
 
 
@@ -406,15 +408,43 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   .insight strong {{ color: {text}; }}
 
   footer {{
-    text-align: center;
-    padding: 2rem 0;
+    padding: 2.5rem 0;
     border-top: 1px solid {border};
-    color: {text_secondary};
-    font-size: 0.85rem;
   }}
 
-  footer a {{ color: {qiskit}; text-decoration: none; }}
-  footer a:hover {{ text-decoration: underline; }}
+  .footer-inner {{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }}
+
+  .btn-outline {{
+    font-family: Inter, -apple-system, Helvetica, Arial, sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    text-decoration: none;
+    padding: 10px 24px;
+    border: 1px solid {border};
+    border-radius: 8px;
+    color: {text};
+    transition: background 0.2s, color 0.2s;
+  }}
+
+  .btn-outline:hover {{
+    background: {text};
+    color: #ffffff;
+  }}
+
+  .btn-outline.secondary {{
+    color: {text_secondary};
+  }}
+
+  .btn-outline.secondary:hover {{
+    background: {text};
+    color: #ffffff;
+  }}
 
   .date-range {{
     text-align: center;
@@ -613,6 +643,9 @@ qc.measure(0, 0)</pre>
     <h2>T1 vs T2 Relationship</h2>
     <p class="description">Physics constrains T2 &le; 2&times;T1. Points near the dashed line indicate energy relaxation dominates.</p>
     <div class="chart-container">{t1_vs_t2_chart}</div>
+    <div class="insight" style="margin-top:1rem;">
+      <strong>Qubit 1 (green) sits above the T2 = T1 line</strong> with a mean T2/T1 ratio of 1.07, meaning its average T2 slightly exceeds T1. This is physically valid (the hard bound is T2 &le; 2&times;T1), but unusual. It indicates pure dephasing is essentially negligible for this qubit — nearly all decoherence comes from energy relaxation alone. By contrast, Qubit 2 (orange) has T2/T1 = 0.71, meaning significant additional phase noise beyond energy relaxation.
+    </div>
     <details class="code-details">
       <summary>Why T2 &le; 2&times;T1</summary>
       <div class="code-body">
@@ -680,8 +713,10 @@ qc1.measure(0, 0)</pre>
 </section>
 
 <footer>
-  Built by <a href="https://lachlan.site">Lachlan Haydon</a> &bull;
-  <a href="https://github.com/LachlanCHaydon/qNoise">Source on GitHub</a>
+  <div class="footer-inner">
+    <a href="https://github.com/LachlanCHaydon/qNoise" class="btn-outline" target="_blank" rel="noopener">View on GitHub</a>
+    <a href="https://lachlan.site/#projects" class="btn-outline secondary">Back to Projects</a>
+  </div>
 </footer>
 
 </div>
