@@ -184,26 +184,33 @@ def make_readout_chart(readout_df: pd.DataFrame) -> str:
 
 
 def make_benchmark_chart(bm_df: pd.DataFrame) -> str:
-    """Compilation depth and 2Q gate comparison."""
+    """Compilation depth and 2Q gate comparison — averaged across all runs."""
     circuits_order = ["bell_state", "ghz_4q", "qft_4q", "qaoa_maxcut_4q"]
     bm = bm_df[bm_df["circuit_name"].isin(circuits_order)].copy()
 
     fig = make_subplots(rows=1, cols=2,
-                        subplot_titles=("Circuit Depth", "Two-Qubit Gates"))
+                        subplot_titles=("Circuit Depth (avg across runs)", "Two-Qubit Gates (avg across runs)"))
 
     for compiler, color in [("qiskit", COLORS["qiskit"]), ("superstaq", COLORS["superstaq"])]:
         cdata = bm[bm["compiler"] == compiler].copy()
         cdata["circuit_name"] = pd.Categorical(cdata["circuit_name"], categories=circuits_order, ordered=True)
-        cdata = cdata.sort_values("circuit_name").groupby("circuit_name").last().reset_index()
-        labels = [c.replace("_", " ").title() for c in cdata["circuit_name"]]
+        agg = cdata.groupby("circuit_name").agg(
+            depth_mean=("depth_after", "mean"),
+            depth_std=("depth_after", "std"),
+            cx_mean=("cx_count", "mean"),
+            cx_std=("cx_count", "std"),
+        ).reindex(circuits_order).dropna(subset=["depth_mean"]).reset_index()
+        labels = [c.replace("_", " ").title() for c in agg["circuit_name"]]
 
         fig.add_trace(go.Bar(
-            x=labels, y=cdata["depth_after"], name=compiler.capitalize(),
-            marker_color=color, legendgroup=compiler,
+            x=labels, y=agg["depth_mean"],
+            error_y=dict(type="data", array=agg["depth_std"].fillna(0).tolist(), visible=True),
+            name=compiler.capitalize(), marker_color=color, legendgroup=compiler,
         ), row=1, col=1)
         fig.add_trace(go.Bar(
-            x=labels, y=cdata["cx_count"], name=compiler.capitalize(),
-            marker_color=color, legendgroup=compiler, showlegend=False,
+            x=labels, y=agg["cx_mean"],
+            error_y=dict(type="data", array=agg["cx_std"].fillna(0).tolist(), visible=True),
+            name=compiler.capitalize(), marker_color=color, legendgroup=compiler, showlegend=False,
         ), row=1, col=2)
 
     style(fig)
@@ -215,7 +222,7 @@ def make_benchmark_chart(bm_df: pd.DataFrame) -> str:
 
 
 def make_fidelity_chart(bm_df: pd.DataFrame) -> str:
-    """Hardware fidelity comparison — the money chart."""
+    """Hardware fidelity comparison — averaged across all runs with std dev error bars."""
     circuits_order = ["bell_state", "ghz_4q", "qft_4q", "qaoa_maxcut_4q"]
     bm = bm_df[(bm_df["circuit_name"].isin(circuits_order)) & (bm_df["fidelity"].notna())].copy()
 
@@ -226,20 +233,27 @@ def make_fidelity_chart(bm_df: pd.DataFrame) -> str:
     for compiler, color in [("qiskit", COLORS["qiskit"]), ("superstaq", COLORS["superstaq"])]:
         cdata = bm[bm["compiler"] == compiler].copy()
         cdata["circuit_name"] = pd.Categorical(cdata["circuit_name"], categories=circuits_order, ordered=True)
-        cdata = cdata.sort_values("circuit_name").groupby("circuit_name").last().reset_index()
-        labels = [c.replace("_", " ").title() for c in cdata["circuit_name"]]
+        agg = cdata.groupby("circuit_name").agg(
+            fidelity_mean=("fidelity", "mean"),
+            fidelity_std=("fidelity", "std"),
+            n=("fidelity", "count"),
+        ).reindex(circuits_order).dropna(subset=["fidelity_mean"]).reset_index()
+        labels = [c.replace("_", " ").title() for c in agg["circuit_name"]]
 
         fig.add_trace(go.Bar(
-            x=labels, y=cdata["fidelity"], name=compiler.capitalize(),
+            x=labels, y=agg["fidelity_mean"],
+            error_y=dict(type="data", array=agg["fidelity_std"].fillna(0).tolist(), visible=True),
+            name=compiler.capitalize(),
             marker_color=color,
-            text=[f"{f:.4f}" for f in cdata["fidelity"]],
-            textposition="outside", textfont=dict(size=11),
+            text=[f"{m:.4f}<br><span style='font-size:9px'>±{s:.4f} (n={int(n)})</span>"
+                  for m, s, n in zip(agg["fidelity_mean"], agg["fidelity_std"].fillna(0), agg["n"])],
+            textposition="outside", textfont=dict(size=10),
         ))
 
     style(fig)
     fig.update_layout(
-        yaxis_title="Hellinger Fidelity", yaxis_range=[0.9, 1.005],
-        barmode="group", height=420,
+        yaxis_title="Hellinger Fidelity (mean ± std)", yaxis_range=[0.88, 1.02],
+        barmode="group", height=440,
         legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="center", x=0.5),
     )
     return fig.to_html(full_html=False, include_plotlyjs=False)
@@ -661,7 +675,7 @@ qc1.measure(0, 0)</pre>
     </div>
   </details>
   <div class="insight">
-    <strong>Early signal:</strong> So far, Superstaq has won 2 of 3 fidelity comparisons, specifically on QFT-4q, where it achieved fidelity (0.9970 vs 0.9914) even though it produced a deeper circuit. This dataset is too small to make any conclusions, but the early data suggests that optimizing for 2Q gate count might matter more than minimizing depth on noisy hardware. I'm going to be running this a few more times over the next few days to see if this pattern changes. Please check back soon! :) 
+    <strong>3-run average findings:</strong> Across 3 hardware runs, <strong>QFT-4q is the clearest result</strong> — Superstaq averaged 0.9934 vs Qiskit's 0.9886 (+0.5%), with lower variance (±0.003 vs ±0.007), despite producing a deeper circuit. The advantage comes from fewer 2-qubit gates (16 vs 18 CX). Bell and GHZ are too close to call — within each other's standard deviation. This suggests that on Heron-generation hardware, <strong>2Q gate count matters more than circuit depth</strong> for circuits with significant entanglement structure. QAOA results are still pending a bug fix.
   </div>
 </section>
 
