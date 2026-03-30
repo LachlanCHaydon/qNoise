@@ -675,7 +675,7 @@ qc1.measure(0, 0)</pre>
     </div>
   </details>
   <div class="insight">
-    <strong>3-run average findings:</strong> Across 3 hardware runs, <strong>QFT-4q is the clearest result</strong> — Superstaq averaged 0.9934 vs Qiskit's 0.9886 (+0.5%), with lower variance (±0.003 vs ±0.007), despite producing a deeper circuit. The advantage comes from fewer 2-qubit gates (16 vs 18 CX). Bell and GHZ are too close to call — within each other's standard deviation. This suggests that on Heron-generation hardware, <strong>2Q gate count matters more than circuit depth</strong> for circuits with significant entanglement structure. QAOA results are still pending a bug fix.
+    <strong>3-run average findings:</strong> Across 3 hardware runs, QFT-4q shows the most consistent directional pattern: Superstaq averaged 0.9934 vs Qiskit's 0.9886, a difference of +0.5% with lower run-to-run variance (±0.003 vs ±0.007). The gap is small and 3 runs is not enough to call it statistically significant, but the direction is consistent across every run. Notably, Superstaq achieves this with a <strong>deeper</strong> circuit, suggesting the advantage comes from fewer 2-qubit gates (16 vs 18 CX) rather than shallower routing. Bell and GHZ results are within each other's standard deviation and show no reliable winner at this sample size. QAOA results are still pending a bug fix.
   </div>
 </section>
 
