@@ -185,7 +185,7 @@ def make_readout_chart(readout_df: pd.DataFrame) -> str:
 
 def make_benchmark_chart(bm_df: pd.DataFrame) -> str:
     """Compilation depth and 2Q gate comparison — averaged across all runs."""
-    circuits_order = ["bell_state", "ghz_4q", "qft_4q", "qaoa_maxcut_4q"]
+    circuits_order = ["bell_state", "ghz_4q", "qft_4q"]
     bm = bm_df[bm_df["circuit_name"].isin(circuits_order)].copy()
 
     fig = make_subplots(rows=1, cols=2,
@@ -223,7 +223,7 @@ def make_benchmark_chart(bm_df: pd.DataFrame) -> str:
 
 def make_fidelity_chart(bm_df: pd.DataFrame) -> str:
     """Hardware fidelity comparison — averaged across all runs with std dev error bars."""
-    circuits_order = ["bell_state", "ghz_4q", "qft_4q", "qaoa_maxcut_4q"]
+    circuits_order = ["bell_state", "ghz_4q", "qft_4q"]
     bm = bm_df[(bm_df["circuit_name"].isin(circuits_order)) & (bm_df["fidelity"].notna())].copy()
 
     if len(bm) == 0:
@@ -653,7 +653,7 @@ qc1.measure(0, 0)</pre>
   <details class="code-details">
     <summary>How the benchmark works</summary>
     <div class="code-body">
-      <p>Four benchmark circuits (Bell state, GHZ-4q, QFT-4q, QAOA MaxCut-4q) are compiled through two paths:</p>
+      <p>Three benchmark circuits (Bell state, GHZ-4q, QFT-4q) are compiled through two paths:</p>
       <p><strong>Qiskit path:</strong> <code>transpile(circuit, backend=ibm_fez, optimization_level=3)</code> &mdash; Qiskit's most aggressive optimization. Decomposes to the native gate set (CZ, SX, RZ), optimizes single-qubit chains, and routes qubits across the hardware topology.</p>
       <p><strong>Superstaq path:</strong> <code>provider.ibmq_compile(circuit, target="ibmq_fez_qpu")</code> &mdash; Infleqtion's cloud compiler. Uses proprietary optimizations including hardware-aware noise models and custom decomposition strategies.</p>
       <p>Both compiled circuits are then submitted to ibm_fez in the same job, ensuring identical hardware conditions for a fair comparison.</p>
@@ -675,7 +675,7 @@ qc1.measure(0, 0)</pre>
     </div>
   </details>
   <div class="insight">
-    <strong>3-run average findings:</strong> Across 3 hardware runs, QFT-4q shows the most consistent directional pattern: Superstaq averaged 0.9934 vs Qiskit's 0.9886, a difference of +0.5% with lower run-to-run variance (±0.003 vs ±0.007). The gap is small and 3 runs is not enough to call it statistically significant, but the direction is consistent across every run. Notably, Superstaq achieves this with a <strong>deeper</strong> circuit, suggesting the advantage comes from fewer 2-qubit gates (16 vs 18 CX) rather than shallower routing. Bell and GHZ results are within each other's standard deviation and show no reliable winner at this sample size. QAOA fidelity is not yet implemented: unlike Bell, GHZ, and QFT, QAOA with fixed angles has no simple closed-form ideal distribution to compare against, so fidelity is left blank pending a classical simulation baseline.
+    <strong>3-run average findings:</strong> Across 3 hardware runs, QFT-4q shows the most consistent directional pattern: Superstaq averaged 0.9934 vs Qiskit's 0.9886, a difference of +0.5% with lower run-to-run variance (±0.003 vs ±0.007). The gap is small and 3 runs is not enough to call it statistically significant, but the direction is consistent across every run. Notably, Superstaq achieves this with a <strong>deeper</strong> circuit, suggesting the advantage comes from fewer 2-qubit gates (16 vs 18 CX) rather than shallower routing. Bell and GHZ results are within each other's standard deviation and show no reliable winner at this sample size.
   </div>
 </section>
 
